@@ -1,5 +1,6 @@
 go-netfilter-queue
 ==================
+[![GoDoc](https://godoc.org/github.com/AkihiroSuda/go-netfilter-queue?status.svg)](https://godoc.org/github.com/AkihiroSuda/go-netfilter-queue)
 
 Go bindings for libnetfilter_queue
 
