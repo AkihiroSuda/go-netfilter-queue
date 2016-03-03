@@ -35,6 +35,9 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"os"
+	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -61,6 +64,7 @@ type NFQueue struct {
 	qh      *C.struct_nfq_q_handle
 	fd      C.int
 	packets chan NFPacket
+	idx     uint32
 }
 
 //Verdict for a packet
@@ -78,6 +82,9 @@ const (
 
 	NF_DEFAULT_PACKET_SIZE uint32 = 0xffff
 )
+
+var theTable = make(map[uint32]*chan NFPacket, 0)
+var theTabeLock sync.RWMutex
 
 //Create and bind to queue specified by queueId
 func NewNFQueue(queueId uint16, maxPacketsInQueue uint32, packetSize uint32) (*NFQueue, error) {
@@ -98,7 +105,11 @@ func NewNFQueue(queueId uint16, maxPacketsInQueue uint32, packetSize uint32) (*N
 	}
 
 	nfq.packets = make(chan NFPacket)
-	if nfq.qh, err = C.CreateQueue(nfq.h, C.u_int16_t(queueId), unsafe.Pointer(&nfq.packets)); err != nil || nfq.qh == nil {
+	nfq.idx = uint32(time.Now().UnixNano())
+	theTabeLock.Lock()
+	theTable[nfq.idx] = &nfq.packets
+	theTabeLock.Unlock()
+	if nfq.qh, err = C.CreateQueue(nfq.h, C.u_int16_t(queueId), C.u_int32_t(nfq.idx)); err != nil || nfq.qh == nil {
 		C.nfq_close(nfq.h)
 		return nil, fmt.Errorf("Error binding to queue: %v\n", err)
 	}
@@ -130,6 +141,9 @@ func NewNFQueue(queueId uint16, maxPacketsInQueue uint32, packetSize uint32) (*N
 func (nfq *NFQueue) Close() {
 	C.nfq_destroy_queue(nfq.qh)
 	C.nfq_close(nfq.h)
+	theTabeLock.Lock()
+	delete(theTable, nfq.idx)
+	theTabeLock.Unlock()
 }
 
 //Get the channel for packets
@@ -142,15 +156,23 @@ func (nfq *NFQueue) run() {
 }
 
 //export go_callback
-func go_callback(queueId C.int, data *C.uchar, len C.int, cb *chan NFPacket) Verdict {
+func go_callback(queueId C.int, data *C.uchar, len C.int, idx uint32) Verdict {
 	xdata := C.GoBytes(unsafe.Pointer(data), len)
 	packet := gopacket.NewPacket(xdata, layers.LayerTypeIPv4, gopacket.DecodeOptions{Lazy: true, NoCopy: true})
 	p := NFPacket{verdictChannel: make(chan Verdict), Packet: packet}
+	theTabeLock.RLock()
+	cb, ok := theTable[idx]
+	theTabeLock.RUnlock()
+	if !ok {
+		fmt.Fprintf(os.Stderr, "Dropping, unexpectedly due to bad idx=%d\n", idx)
+		return NF_DROP
+	}
 	select {
 	case (*cb) <- p:
 		v := <-p.verdictChannel
 		return v
 	default:
+		fmt.Fprintf(os.Stderr, "Dropping, unexpectedly due to no recv, idx=%d\n", idx)
 		return NF_DROP
 	}
 }
