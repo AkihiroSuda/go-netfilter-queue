@@ -5,7 +5,7 @@ go-netfilter-queue
 
 Go bindings for libnetfilter_queue
 
-_Forked from [openshift/geard@be0423a](https://github.com/openshift/geard/tree/be0423a67449bc4be1419e03e8bdf459ff0df07e/pkg/go-netfilter-queue)_
+_Forked from [openshift/geard@be0423a](https://github.com/openshift/geard/tree/be0423a67449bc4be1419e03e8bdf459ff0df07e/pkg/go-netfilter-queue)_ for supporting recent environments. I'm using Go 1.6 for testing.
 
 This library provides access to packets in the IPTables netfilter queue (NFQUEUE).
 The libnetfilter_queue library is part of the [Netfilter project| http://netfilter.org/projects/libnetfilter_queue/].
@@ -23,7 +23,7 @@ You can then use go-netfilter-queue to inspect the packets:
     
     import (
             "fmt"
-            "github.com/openshift/geard/pkg/go-netfilter-queue"
+            "github.com/AkihiroSuda/go-netfilter-queue"
             "os"
     )
     
