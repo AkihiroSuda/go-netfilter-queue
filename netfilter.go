@@ -72,6 +72,7 @@ type Verdict C.uint
 
 const (
 	AF_INET = 2
+	AF_INET6 = 10
 
 	NF_DROP   Verdict = 0
 	NF_ACCEPT Verdict = 1
@@ -100,8 +101,16 @@ func NewNFQueue(queueId uint16, maxPacketsInQueue uint32, packetSize uint32) (*N
 		return nil, fmt.Errorf("Error unbinding existing NFQ handler from AF_INET protocol family: %v\n", err)
 	}
 
+	if ret, err = C.nfq_unbind_pf(nfq.h, AF_INET6); err != nil || ret < 0 {
+		return nil, fmt.Errorf("Error unbinding existing NFQ handler from AF_INET6 protocol family: %v\n", err)
+	}
+
 	if ret, err := C.nfq_bind_pf(nfq.h, AF_INET); err != nil || ret < 0 {
 		return nil, fmt.Errorf("Error binding to AF_INET protocol family: %v\n", err)
+	}
+
+	if ret, err := C.nfq_bind_pf(nfq.h, AF_INET6); err != nil || ret < 0 {
+		return nil, fmt.Errorf("Error binding to AF_INET6 protocol family: %v\n", err)
 	}
 
 	nfq.packets = make(chan NFPacket)
@@ -158,7 +167,14 @@ func (nfq *NFQueue) run() {
 //export go_callback
 func go_callback(queueId C.int, data *C.uchar, len C.int, idx uint32) Verdict {
 	xdata := C.GoBytes(unsafe.Pointer(data), len)
-	packet := gopacket.NewPacket(xdata, layers.LayerTypeIPv4, gopacket.DecodeOptions{Lazy: true, NoCopy: true})
+
+	var packet gopacket.Packet
+	if xdata[0] & 0xf0 == 0x40 {
+		packet = gopacket.NewPacket(xdata, layers.LayerTypeIPv4, gopacket.DecodeOptions{Lazy: true, NoCopy: true})
+	} else {
+		packet = gopacket.NewPacket(xdata, layers.LayerTypeIPv6, gopacket.DecodeOptions{Lazy: true, NoCopy: true})
+	}
+
 	p := NFPacket{verdictChannel: make(chan Verdict), Packet: packet}
 	theTabeLock.RLock()
 	cb, ok := theTable[idx]
@@ -168,7 +184,7 @@ func go_callback(queueId C.int, data *C.uchar, len C.int, idx uint32) Verdict {
 		return NF_DROP
 	}
 	select {
-	case (*cb) <- p:
+	case *cb <- p:
 		v := <-p.verdictChannel
 		return v
 	default:
