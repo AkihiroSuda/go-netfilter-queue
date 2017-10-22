@@ -82,6 +82,8 @@ const (
 	NF_STOP   Verdict = 5
 
 	NF_DEFAULT_PACKET_SIZE uint32 = 0xffff
+
+	ipv4version = 0x40
 )
 
 var theTable = make(map[uint32]*chan NFPacket, 0)
@@ -138,7 +140,7 @@ func NewNFQueue(queueId uint16, maxPacketsInQueue uint32, packetSize uint32) (*N
 	if nfq.fd, err = C.nfq_fd(nfq.h); err != nil {
 		C.nfq_destroy_queue(nfq.qh)
 		C.nfq_close(nfq.h)
-		return nil, fmt.Errorf("Unable to get queue file-descriptor. %v", err)
+		return nil, fmt.Errorf("Unable to get queue file-descriptor. %v\n", err)
 	}
 
 	go nfq.run()
@@ -169,7 +171,7 @@ func go_callback(queueId C.int, data *C.uchar, len C.int, idx uint32) Verdict {
 	xdata := C.GoBytes(unsafe.Pointer(data), len)
 
 	var packet gopacket.Packet
-	if xdata[0] & 0xf0 == 0x40 {
+	if xdata[0] & 0xf0 == ipv4version {
 		packet = gopacket.NewPacket(xdata, layers.LayerTypeIPv4, gopacket.DecodeOptions{Lazy: true, NoCopy: true})
 	} else {
 		packet = gopacket.NewPacket(xdata, layers.LayerTypeIPv6, gopacket.DecodeOptions{Lazy: true, NoCopy: true})
