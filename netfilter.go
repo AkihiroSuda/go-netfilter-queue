@@ -33,30 +33,48 @@ import "C"
 
 import (
 	"fmt"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
 	"os"
 	"sync"
 	"time"
 	"unsafe"
+
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 )
+
+//Verdict for a packet
+type Verdict C.uint
+
+//Container for a verdict and (possibly) a modified packet (C side)
+type VerdictContainerC C.verdictContainer
+
+//Container for a verdict and (possibly) a modified packet (Go side)
+type VerdictContainer struct {
+	Verdict	Verdict
+	Packet 	[]byte
+}
 
 type NFPacket struct {
 	Packet         gopacket.Packet
-	verdictChannel chan Verdict
+	verdictChannel chan VerdictContainer
 }
 
 //Set the verdict for the packet
 func (p *NFPacket) SetVerdict(v Verdict) {
-	p.verdictChannel <- v
+	p.verdictChannel <- VerdictContainer{Verdict: v, Packet: nil}
 }
 
-//Set the verdict for the packet
+//Set the verdict for the packet (in the case of requeue)
 func (p *NFPacket) SetRequeueVerdict(newQueueId uint16) {
 	v := uint(NF_QUEUE)
 	q := (uint(newQueueId) << 16)
 	v = v | q
-	p.verdictChannel <- Verdict(v)
+	p.verdictChannel <- VerdictContainer{Verdict: Verdict(v), Packet: nil}
+}
+
+//Set the verdict for the packet AND provide new packet content for injection
+func (p *NFPacket) SetVerdictWithPacket(v Verdict, packet []byte) {
+	p.verdictChannel <- VerdictContainer{Verdict: v, Packet: packet}
 }
 
 type NFQueue struct {
@@ -66,9 +84,6 @@ type NFQueue struct {
 	packets chan NFPacket
 	idx     uint32
 }
-
-//Verdict for a packet
-type Verdict C.uint
 
 const (
 	AF_INET = 2
@@ -167,8 +182,8 @@ func (nfq *NFQueue) run() {
 }
 
 //export go_callback
-func go_callback(queueId C.int, data *C.uchar, len C.int, idx uint32) Verdict {
-	xdata := C.GoBytes(unsafe.Pointer(data), len)
+func go_callback(queueId C.int, data *C.uchar, length C.int, idx uint32, vc* VerdictContainerC) {
+	xdata := C.GoBytes(unsafe.Pointer(data), length)
 
 	var packet gopacket.Packet
 	if xdata[0] & 0xf0 == ipv4version {
@@ -177,20 +192,39 @@ func go_callback(queueId C.int, data *C.uchar, len C.int, idx uint32) Verdict {
 		packet = gopacket.NewPacket(xdata, layers.LayerTypeIPv6, gopacket.DecodeOptions{Lazy: true, NoCopy: true})
 	}
 
-	p := NFPacket{verdictChannel: make(chan Verdict), Packet: packet}
+	p := NFPacket{
+		verdictChannel: make(chan VerdictContainer),
+		Packet: packet,
+	}
+
 	theTabeLock.RLock()
 	cb, ok := theTable[idx]
 	theTabeLock.RUnlock()
 	if !ok {
 		fmt.Fprintf(os.Stderr, "Dropping, unexpectedly due to bad idx=%d\n", idx)
-		return NF_DROP
+		(*vc).verdict = C.uint(NF_DROP)
+		(*vc).data = nil
+		(*vc).length = 0
 	}
 	select {
-	case *cb <- p:
-		v := <-p.verdictChannel
-		return v
-	default:
-		fmt.Fprintf(os.Stderr, "Dropping, unexpectedly due to no recv, idx=%d\n", idx)
-		return NF_DROP
+		case *cb <- p:
+			select {
+				case v := <-p.verdictChannel:
+					if v.Packet == nil {
+						(*vc).verdict = C.uint(v.Verdict)
+						(*vc).data = nil
+						(*vc).length = 0
+					} else {
+						(*vc).verdict = C.uint(v.Verdict)
+						(*vc).data = (*C.uchar)(unsafe.Pointer(&v.Packet[0]))
+						(*vc).length = C.uint(len(v.Packet))
+					}
+			}
+
+		default:
+			fmt.Fprintf(os.Stderr, "Dropping, unexpectedly due to no recv, idx=%d\n", idx)
+			(*vc).verdict = C.uint(NF_DROP)
+			(*vc).data = nil
+			(*vc).length = 0
 	}
 }
