@@ -47,6 +47,14 @@ You can then use go-netfilter-queue to inspect the packets:
             }
     }
 
+To inject a new or modified packet in the place of the original packet, use:
+
+    p.SetVerdictWithPacket(netfilter.NF_ACCEPT, byte_slice)
+
+Instead of:
+
+    p.SetVerdict(netfilter.NF_ACCEPT)
+
 To undo the IPTables redirect. Run:
 
     iptables -D OUTPUT -p icmp -j NFQUEUE --queue-num 0
