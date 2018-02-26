@@ -64,6 +64,9 @@ static inline void Run(struct nfq_handle *h, int fd)
     char buf[4096] __attribute__ ((aligned));
     int rv;
 
+    int opt = 1;
+    setsockopt(fd, SOL_NETLINK, NETLINK_NO_ENOBUFS, &opt, sizeof(int));
+
     while ((rv = recv(fd, buf, sizeof(buf), 0)) && rv >= 0) {
         nfq_handle_packet(h, buf, rv);
     }
