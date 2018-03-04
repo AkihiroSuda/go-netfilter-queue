@@ -178,7 +178,9 @@ func (nfq *NFQueue) GetPackets() <-chan NFPacket {
 }
 
 func (nfq *NFQueue) run() {
-	C.Run(nfq.h, nfq.fd)
+	if errno := C.Run(nfq.h, nfq.fd); errno != 0 {
+		fmt.Fprintf(os.Stderr, "Terminating, unable to receive packet due to errno=%d\n", errno)
+	}
 }
 
 //export go_callback
