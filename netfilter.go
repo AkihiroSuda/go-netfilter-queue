@@ -168,6 +168,7 @@ func (nfq *NFQueue) Close() {
 	C.nfq_destroy_queue(nfq.qh)
 	C.nfq_close(nfq.h)
 	theTabeLock.Lock()
+	close(nfq.packets)
 	delete(theTable, nfq.idx)
 	theTabeLock.Unlock()
 }
