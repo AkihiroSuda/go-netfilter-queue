@@ -45,13 +45,10 @@ import (
 //Verdict for a packet
 type Verdict C.uint
 
-//Container for a verdict and (possibly) a modified packet (C side)
-type VerdictContainerC C.verdictContainer
-
 type NFPacket struct {
 	Packet gopacket.Packet
 	qh     *C.struct_nfq_q_handle
-	id     C.uint
+	id     C.uint32_t
 }
 
 //Set the verdict for the packet
@@ -186,7 +183,7 @@ func (nfq *NFQueue) run() {
 }
 
 //export go_callback
-func go_callback(queueId C.int, data *C.uchar, length C.int, idx uint32, vc *VerdictContainerC) {
+func go_callback(packetId C.uint32_t, data *C.uchar, length C.int, idx uint32, qh *C.struct_nfq_q_handle) {
 	xdata := C.GoBytes(unsafe.Pointer(data), length)
 
 	var packet gopacket.Packet
@@ -198,8 +195,8 @@ func go_callback(queueId C.int, data *C.uchar, length C.int, idx uint32, vc *Ver
 
 	p := NFPacket{
 		Packet: packet,
-		qh:     vc.qh,
-		id:     vc.id,
+		qh:     qh,
+		id:     packetId,
 	}
 
 	theTabeLock.RLock()

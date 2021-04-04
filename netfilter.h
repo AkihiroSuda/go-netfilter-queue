@@ -29,15 +29,13 @@
 #include <linux/netfilter.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
-typedef struct {
-    struct nfq_q_handle *qh;
-    uint id;
-    uint32_t verdict;
-    uint length;
-    unsigned char *data;
-} verdictContainer;
-
-extern void go_callback(int id, unsigned char* data, int len, u_int32_t idx, verdictContainer *vc);
+extern void go_callback(
+    uint32_t id,
+    unsigned char* data,
+    int len,
+    u_int32_t idx,
+    struct nfq_q_handle* qh
+);
 
 static int nf_callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *cb_func){
     uint32_t id = -1;
@@ -45,7 +43,6 @@ static int nf_callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct n
     unsigned char *buffer = NULL;
     int ret = 0;
     u_int32_t idx;
-    verdictContainer vc;
 
     ph = nfq_get_msg_packet_hdr(nfa);
     id = ntohl(ph->packet_id);
@@ -53,9 +50,7 @@ static int nf_callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct n
     ret = nfq_get_payload(nfa, &buffer);
     idx = (uint32_t)((uintptr_t)cb_func);
 
-    vc.qh = qh;
-    vc.id = id;
-    go_callback(id, buffer, ret, idx, &vc);
+    go_callback(id, buffer, ret, idx, qh);
     return 0;
 }
 
