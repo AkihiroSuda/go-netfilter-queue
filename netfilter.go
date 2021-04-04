@@ -48,20 +48,15 @@ type Verdict C.uint
 //Container for a verdict and (possibly) a modified packet (C side)
 type VerdictContainerC C.verdictContainer
 
-//Container for a verdict and (possibly) a modified packet (Go side)
-type VerdictContainer struct {
-	Verdict Verdict
-	Packet  []byte
-}
-
 type NFPacket struct {
-	Packet         gopacket.Packet
-	verdictChannel chan VerdictContainer
+	Packet gopacket.Packet
+	qh     *C.struct_nfq_q_handle
+	id     C.uint
 }
 
 //Set the verdict for the packet
 func (p *NFPacket) SetVerdict(v Verdict) {
-	p.verdictChannel <- VerdictContainer{Verdict: v, Packet: nil}
+	C.nfq_set_verdict(p.qh, p.id, C.uint(v), 0, nil)
 }
 
 //Set the verdict for the packet (in the case of requeue)
@@ -69,12 +64,18 @@ func (p *NFPacket) SetRequeueVerdict(newQueueId uint16) {
 	v := uint(NF_QUEUE)
 	q := (uint(newQueueId) << 16)
 	v = v | q
-	p.verdictChannel <- VerdictContainer{Verdict: Verdict(v), Packet: nil}
+	C.nfq_set_verdict(p.qh, p.id, C.uint(v), 0, nil)
 }
 
 //Set the verdict for the packet AND provide new packet content for injection
 func (p *NFPacket) SetVerdictWithPacket(v Verdict, packet []byte) {
-	p.verdictChannel <- VerdictContainer{Verdict: v, Packet: packet}
+	C.nfq_set_verdict(
+		p.qh,
+		p.id,
+		C.uint(v),
+		C.uint(len(packet)),
+		(*C.uchar)(unsafe.Pointer(&packet[0])),
+	)
 }
 
 type NFQueue struct {
@@ -196,8 +197,9 @@ func go_callback(queueId C.int, data *C.uchar, length C.int, idx uint32, vc *Ver
 	}
 
 	p := NFPacket{
-		verdictChannel: make(chan VerdictContainer),
-		Packet:         packet,
+		Packet: packet,
+		qh:     vc.qh,
+		id:     vc.id,
 	}
 
 	theTabeLock.RLock()
@@ -205,29 +207,14 @@ func go_callback(queueId C.int, data *C.uchar, length C.int, idx uint32, vc *Ver
 	theTabeLock.RUnlock()
 	if !ok {
 		fmt.Fprintf(os.Stderr, "Dropping, unexpectedly due to bad idx=%d\n", idx)
-		(*vc).verdict = C.uint(NF_DROP)
-		(*vc).data = nil
-		(*vc).length = 0
+		p.SetVerdict(NF_DROP)
 	}
+
+	// Nonblocking write of packet to queue channel
 	select {
 	case *cb <- p:
-		select {
-		case v := <-p.verdictChannel:
-			if v.Packet == nil {
-				(*vc).verdict = C.uint(v.Verdict)
-				(*vc).data = nil
-				(*vc).length = 0
-			} else {
-				(*vc).verdict = C.uint(v.Verdict)
-				(*vc).data = (*C.uchar)(unsafe.Pointer(&v.Packet[0]))
-				(*vc).length = C.uint(len(v.Packet))
-			}
-		}
-
 	default:
 		fmt.Fprintf(os.Stderr, "Dropping, unexpectedly due to no recv, idx=%d\n", idx)
-		(*vc).verdict = C.uint(NF_DROP)
-		(*vc).data = nil
-		(*vc).length = 0
+		p.SetVerdict(NF_DROP)
 	}
 }

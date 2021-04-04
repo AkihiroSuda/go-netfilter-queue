@@ -30,7 +30,9 @@
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
 typedef struct {
-    uint verdict;
+    struct nfq_q_handle *qh;
+    uint id;
+    uint32_t verdict;
     uint length;
     unsigned char *data;
 } verdictContainer;
@@ -51,9 +53,10 @@ static int nf_callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct n
     ret = nfq_get_payload(nfa, &buffer);
     idx = (uint32_t)((uintptr_t)cb_func);
 
+    vc.qh = qh;
+    vc.id = id;
     go_callback(id, buffer, ret, idx, &vc);
-
-    return nfq_set_verdict(qh, id, vc.verdict, vc.length, vc.data);
+    return 0;
 }
 
 static inline struct nfq_q_handle* CreateQueue(struct nfq_handle *h, u_int16_t queue, u_int32_t idx)
