@@ -50,8 +50,8 @@ type VerdictContainerC C.verdictContainer
 
 //Container for a verdict and (possibly) a modified packet (Go side)
 type VerdictContainer struct {
-	Verdict	Verdict
-	Packet 	[]byte
+	Verdict Verdict
+	Packet  []byte
 }
 
 type NFPacket struct {
@@ -86,7 +86,7 @@ type NFQueue struct {
 }
 
 const (
-	AF_INET = 2
+	AF_INET  = 2
 	AF_INET6 = 10
 
 	NF_DROP   Verdict = 0
@@ -185,11 +185,11 @@ func (nfq *NFQueue) run() {
 }
 
 //export go_callback
-func go_callback(queueId C.int, data *C.uchar, length C.int, idx uint32, vc* VerdictContainerC) {
+func go_callback(queueId C.int, data *C.uchar, length C.int, idx uint32, vc *VerdictContainerC) {
 	xdata := C.GoBytes(unsafe.Pointer(data), length)
 
 	var packet gopacket.Packet
-	if xdata[0] & 0xf0 == ipv4version {
+	if xdata[0]&0xf0 == ipv4version {
 		packet = gopacket.NewPacket(xdata, layers.LayerTypeIPv4, gopacket.DecodeOptions{Lazy: true, NoCopy: true})
 	} else {
 		packet = gopacket.NewPacket(xdata, layers.LayerTypeIPv6, gopacket.DecodeOptions{Lazy: true, NoCopy: true})
@@ -197,7 +197,7 @@ func go_callback(queueId C.int, data *C.uchar, length C.int, idx uint32, vc* Ver
 
 	p := NFPacket{
 		verdictChannel: make(chan VerdictContainer),
-		Packet: packet,
+		Packet:         packet,
 	}
 
 	theTabeLock.RLock()
@@ -210,24 +210,24 @@ func go_callback(queueId C.int, data *C.uchar, length C.int, idx uint32, vc* Ver
 		(*vc).length = 0
 	}
 	select {
-		case *cb <- p:
-			select {
-				case v := <-p.verdictChannel:
-					if v.Packet == nil {
-						(*vc).verdict = C.uint(v.Verdict)
-						(*vc).data = nil
-						(*vc).length = 0
-					} else {
-						(*vc).verdict = C.uint(v.Verdict)
-						(*vc).data = (*C.uchar)(unsafe.Pointer(&v.Packet[0]))
-						(*vc).length = C.uint(len(v.Packet))
-					}
+	case *cb <- p:
+		select {
+		case v := <-p.verdictChannel:
+			if v.Packet == nil {
+				(*vc).verdict = C.uint(v.Verdict)
+				(*vc).data = nil
+				(*vc).length = 0
+			} else {
+				(*vc).verdict = C.uint(v.Verdict)
+				(*vc).data = (*C.uchar)(unsafe.Pointer(&v.Packet[0]))
+				(*vc).length = C.uint(len(v.Packet))
 			}
+		}
 
-		default:
-			fmt.Fprintf(os.Stderr, "Dropping, unexpectedly due to no recv, idx=%d\n", idx)
-			(*vc).verdict = C.uint(NF_DROP)
-			(*vc).data = nil
-			(*vc).length = 0
+	default:
+		fmt.Fprintf(os.Stderr, "Dropping, unexpectedly due to no recv, idx=%d\n", idx)
+		(*vc).verdict = C.uint(NF_DROP)
+		(*vc).data = nil
+		(*vc).length = 0
 	}
 }
