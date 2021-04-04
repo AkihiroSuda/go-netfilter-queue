@@ -1,4 +1,4 @@
-module github.com/pietdevaere/go-netfilter-queue
+module github.com/AkihiroSuda/go-netfilter-queue
 
 go 1.15
 
