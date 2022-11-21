@@ -24,6 +24,7 @@
 #include <math.h>
 #include <unistd.h>
 #include <netinet/in.h>
+#include <sys/types.h>
 #include <linux/types.h>
 #include <linux/socket.h>
 #include <linux/netfilter.h>
