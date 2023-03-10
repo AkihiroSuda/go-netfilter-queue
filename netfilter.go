@@ -135,7 +135,7 @@ func NewNFQueue(queueId uint16, maxPacketsInQueue uint32, packetSize uint32) (*N
 		return nil, fmt.Errorf("Error binding to AF_INET6 protocol family: %v\n", err)
 	}
 
-	nfq.packets = make(chan NFPacket)
+	nfq.packets = make(chan NFPacket, maxPacketsInQueue)
 	nfq.idx = uint32(time.Now().UnixNano())
 	theTabeLock.Lock()
 	theTable[nfq.idx] = &nfq.packets
