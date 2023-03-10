@@ -34,6 +34,7 @@ extern void go_callback(
     uint32_t id,
     unsigned char* data,
     int len,
+    u_int32_t mark,
     u_int32_t idx,
     struct nfq_q_handle* qh
 );
@@ -43,6 +44,7 @@ static int nf_callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct n
     struct nfqnl_msg_packet_hdr *ph = NULL;
     unsigned char *buffer = NULL;
     int ret = 0;
+    int mark = 0;
     u_int32_t idx;
 
     ph = nfq_get_msg_packet_hdr(nfa);
@@ -51,7 +53,9 @@ static int nf_callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct n
     ret = nfq_get_payload(nfa, &buffer);
     idx = (uint32_t)((uintptr_t)cb_func);
 
-    go_callback(id, buffer, ret, idx, qh);
+    mark = nfq_get_nfmark(nfa);
+
+    go_callback(id, buffer, ret, mark, idx, qh);
     return 0;
 }
 

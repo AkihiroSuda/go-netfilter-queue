@@ -47,6 +47,7 @@ type Verdict C.uint
 
 type NFPacket struct {
 	Packet gopacket.Packet
+	Mark uint32
 	qh     *C.struct_nfq_q_handle
 	id     C.uint32_t
 }
@@ -55,6 +56,12 @@ type NFPacket struct {
 func (p *NFPacket) SetVerdict(v Verdict) {
 	C.nfq_set_verdict(p.qh, p.id, C.uint(v), 0, nil)
 }
+
+//Set the verdict for the packet with a mark
+func (p *NFPacket) SetVerdictMark(v Verdict, mark uint32) {
+	C.nfq_set_verdict2(p.qh, p.id, C.uint(v), C.uint32_t(mark), 0, nil)
+}
+
 
 //Set the verdict for the packet (in the case of requeue)
 func (p *NFPacket) SetRequeueVerdict(newQueueId uint16) {
@@ -183,7 +190,7 @@ func (nfq *NFQueue) run() {
 }
 
 //export go_callback
-func go_callback(packetId C.uint32_t, data *C.uchar, length C.int, idx uint32, qh *C.struct_nfq_q_handle) {
+func go_callback(packetId C.uint32_t, data *C.uchar, length C.int, mark C.uint32_t, idx uint32, qh *C.struct_nfq_q_handle) {
 	xdata := C.GoBytes(unsafe.Pointer(data), length)
 
 	var packet gopacket.Packet
@@ -197,6 +204,7 @@ func go_callback(packetId C.uint32_t, data *C.uchar, length C.int, idx uint32, q
 		Packet: packet,
 		qh:     qh,
 		id:     packetId,
+		Mark: uint32(mark),
 	}
 
 	theTabeLock.RLock()
